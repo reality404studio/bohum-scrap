@@ -1,0 +1,70 @@
+name: 분기별 판례정리
+
+on:
+  workflow_dispatch:
+    inputs:
+      year:
+        description: '연도 (예: 2025)'
+        required: true
+        default: '2025'
+        type: string
+      quarter:
+        description: '분기 (1, 2, 3, 4 중 선택)'
+        required: true
+        default: '2'
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - '3'
+          - '4'
+
+jobs:
+  generate-report:
+    name: 판례 수집 및 보고서 생성
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 저장소 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Python 3.11 설치
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 의존성 설치
+        run: |
+          echo "=== Python 패키지 설치 중 ==="
+          pip install -r requirements.txt
+          echo "=== Playwright 브라우저 설치 중 ==="
+          playwright install chromium --with-deps
+          echo "=== 설치 완료 ==="
+
+      - name: 보고서 생성 실행
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          echo "=== 분기별 판례정리 시작 ==="
+          echo "대상: ${{ inputs.year }}년 ${{ inputs.quarter }}분기"
+          python main.py \
+            --year ${{ inputs.year }} \
+            --quarter ${{ inputs.quarter }} \
+            --output ./output
+          echo "=== 실행 완료 ==="
+
+      - name: 생성된 파일 목록 확인
+        run: |
+          echo "=== 생성된 파일 ==="
+          ls -la ./output/ 2>/dev/null || echo "output 폴더가 비어있습니다"
+
+      - name: 결과 파일 업로드 (Artifacts)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ inputs.year }}년-${{ inputs.quarter }}분기-판례정리
+          path: ./output/
+          retention-days: 30
+          if-no-files-found: warn
