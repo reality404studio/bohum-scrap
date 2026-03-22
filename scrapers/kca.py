@@ -27,6 +27,10 @@ HEADERS = {
     ),
     "Referer": f"{BASE_URL}/odr/cm/in/exmplBjItem.do",
     "Content-Type": "application/x-www-form-urlencoded",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
 }
 
 QUARTER_RANGES = {
@@ -53,6 +57,13 @@ def scrape_kca(year: int, quarter: int) -> list[dict]:
     session = requests.Session()
     session.headers.update(HEADERS)
 
+    # 세션 쿠키 초기화 — 메인 페이지 방문 후 POST해야 차단 회피
+    try:
+        warmup = session.get(f"{BASE_URL}/odr/cm/in/exmplBjItem.do", timeout=30)
+        print(f"[소비자원] 세션 초기화 완료 (status={warmup.status_code})")
+    except Exception as e:
+        print(f"[소비자원] 세션 초기화 실패 (무시하고 계속): {e}")
+
     cases = []
     page_index = 1
 
@@ -78,6 +89,7 @@ def scrape_kca(year: int, quarter: int) -> list[dict]:
         seq_list = _parse_list_page(soup)
 
         if not seq_list:
+            print(f"[소비자원] 페이지 {page_index}: fn_view_bbd 없음 (응답 앞부분: {resp.text[:200]!r})")
             break
 
         stop = False

@@ -24,6 +24,8 @@ jobs:
     name: 판례 수집 및 보고서 생성
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: 저장소 체크아웃
