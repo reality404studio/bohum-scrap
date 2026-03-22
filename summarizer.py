@@ -141,7 +141,7 @@ def _summarize_court(case: dict, title: str, content: str) -> dict:
     for attempt in range(1, 4):
         try:
             response = client.messages.create(
-                model="claude-sonnet-4-6",
+                model="claude-haiku-4-5-20251001",
                 max_tokens=1000,
                 system=COURT_EXTRACT_SYSTEM,
                 messages=[{"role": "user", "content": extract_message}]
