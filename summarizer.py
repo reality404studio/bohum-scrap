@@ -1,6 +1,9 @@
 """
 Claude API를 사용하여 판례/조정례를 4섹션 구조로 변환
 섹션: 사건 요약 / 사실 관계 / 판시 사항 / 활용 방안
+
+대법원: 2단계 (1단계 구조 추출 → 2단계 섹션 생성)
+금감원/소비자원: 단일 개선 프롬프트
 """
 
 import anthropic
@@ -22,28 +25,58 @@ def get_client() -> anthropic.Anthropic:
     return CLIENT
 
 
+# ── 금감원/소비자원용 단일 프롬프트 ────────────────────────────────────────────
+
 SYSTEM_PROMPT = """당신은 한국 보험업계 전문 법률 분석가입니다.
-판례 또는 분쟁조정사례 원문을 읽고, 보험 위원회 임원들이 빠르게 핵심을 파악할 수 있도록
+판례 또는 분쟁조정사례 원문을 읽고, 보험 위원회 임원들이 회의 전 5분 안에 핵심을 파악할 수 있도록
 아래 4개 섹션으로 구조화해 주세요.
 
 출력 형식 (반드시 이 형식 그대로):
 1. 사건 요약
-[2~3문장으로 사건의 핵심을 요약]
+[2문장. 법률 절차가 아닌 실무적 결론 중심. "~한 경우 ~해야 한다고 판단한 사례" 형식 권장]
 
 2. 사실 관계
-[사건의 배경과 주요 사실 관계를 서술]
+[서술형 3~5문장. 수치(금액, 날짜)는 꼭 필요한 것만. 당사자 관계, 사고 경위, 쟁점이 된 행위만 포함]
 
 3. 판시 사항
-[법원/위원회의 판단 내용. 대법원 판례의 경우 법률 원문 표현 최대한 유지]
+[핵심 법리 3~5문장. "~라고 판시함", "~라고 명확히 밝힘" 형식으로 법원/위원회의 판단 논리를 구조화]
 
 4. 활용 방안
-[보험업계 실무자가 이 판례/사례를 어떻게 활용할 수 있는지 구체적으로 설명]
+[관련 당사자(보험사, 피해자 등) 관점별로 구분하여 각각 어떤 상황에서 어떻게 활용할 수 있는지 구체적으로 서술. 3~5문장]
 
 주의사항:
-- 대법원 판례의 경우 '판시 사항' 섹션에서 법률 용어와 원문 표현을 최대한 유지할 것
-- 임의 요약이나 과도한 축약 금지 (특히 판시 사항)
+- 각 섹션의 분량 기준을 반드시 지킬 것
+- 사건 요약은 법률 용어보다 실무적 의미 중심으로
+- 활용 방안은 "보험사 입장에서는 ~" 식으로 주체를 명시
 - 보험 분쟁조정사례의 경우 금융분쟁조정위원회의 판단 논리를 명확히 서술
 - 각 섹션은 번호와 제목으로 시작할 것"""
+
+
+# ── 대법원용 2단계 프롬프트 ────────────────────────────────────────────────────
+
+COURT_EXTRACT_SYSTEM = """당신은 한국 대법원 판례를 분석하는 법률 전문가입니다.
+판례 원문에서 핵심 항목을 정확하게 추출하세요. 원문 법률 용어를 그대로 사용하되 항목당 1~3문장으로 제한합니다."""
+
+COURT_SUMMARIZE_SYSTEM = """당신은 한국 보험업계 전문 법률 분석가입니다.
+제공된 판례 추출 내용을 바탕으로 보험 위원회 임원용 4섹션 요약을 작성하세요.
+원문을 다시 참조하지 말고, 추출된 내용만 사용합니다.
+
+출력 형식 (반드시 이 형식 그대로):
+1. 사건 요약
+[실무적 결론 중심 2문장. "~한 경우 ~해야 한다고 판단한 사례" 형식 권장]
+
+2. 사실 관계
+[서술형 3~4문장. 수치는 꼭 필요한 것만]
+
+3. 판시 사항
+[추출된 대법원 판단 기반, 핵심 법률 용어 유지, 3~5문장. 원문 덩어리 복붙 금지]
+
+4. 활용 방안
+[보험사/공단 등 주체별로 어떤 상황에서 어떻게 활용하는지 구체적으로. 3~5문장]
+
+주의사항:
+- 각 섹션은 번호와 제목으로 시작할 것
+- 활용 방안은 "보험사 입장에서는 ~" / "공단 입장에서는 ~" 식으로 주체 명시"""
 
 
 def summarize_case(case: dict) -> dict:
@@ -52,7 +85,6 @@ def summarize_case(case: dict) -> dict:
     입력: {"title": str, "date": str, "url": str, "content": str, "source": str, ...}
     출력: 입력 dict에 "summary" 키 추가 (4섹션 텍스트)
     """
-    client = get_client()
     source = case.get("source", "")
     title = case.get("title", "")
     content = case.get("content", "")
@@ -61,28 +93,108 @@ def summarize_case(case: dict) -> dict:
         case["summary"] = _empty_summary(title)
         return case
 
-    # 대법원 판례는 정확도 최우선 프롬프트 사용
-    is_court = source == "대법원"
-    user_message = _build_user_message(title, content, source, is_court)
+    if source == "대법원":
+        return _summarize_court(case, title, content)
+    else:
+        return _summarize_single(case, title, content, source)
+
+
+def _summarize_single(case: dict, title: str, content: str, source: str) -> dict:
+    """금감원/소비자원: 단일 프롬프트"""
+    if len(content) > 5000:
+        content = content[:5000] + "\n\n[이하 원문 생략]"
+
+    user_message = f"""다음 {source} 사례를 4섹션으로 구조화해 주세요.
+
+제목: {title}
+
+원문 내용:
+{content}"""
+
+    return _call_api(case, title, SYSTEM_PROMPT, user_message)
+
+
+def _summarize_court(case: dict, title: str, content: str) -> dict:
+    """대법원: 2단계 (추출 → 요약)"""
+    client = get_client()
+
+    if len(content) > 8000:
+        content = content[:8000] + "\n\n[이하 원문 생략]"
+
+    # 1단계: 구조 추출
+    extract_message = f"""다음 대법원 판례에서 아래 항목을 추출하세요. 원문 표현을 그대로 사용하되 항목당 1~3문장으로 제한합니다.
+
+제목: {title}
+
+원문:
+{content}
+
+추출 항목:
+- 핵심 법률 쟁점: (이 판례가 판단한 법적 질문 1문장)
+- 당사자 관계: (원고/피고 각각의 역할)
+- 핵심 사실: (쟁점과 직접 관련된 사실만 3개 이하)
+- 원심 판단: (원심이 왜 틀렸는지)
+- 대법원 판단: (대법원이 내린 결론과 핵심 법리, 원문 법률 용어 유지)
+- 결과: (파기환송/인용/기각)"""
+
+    extracted = None
+    for attempt in range(1, 4):
+        try:
+            response = client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=1000,
+                system=COURT_EXTRACT_SYSTEM,
+                messages=[{"role": "user", "content": extract_message}]
+            )
+            extracted = response.content[0].text.strip()
+            break
+        except anthropic.RateLimitError:
+            wait = 10 * attempt
+            print(f"  [추출] API 한도 초과 - {wait}초 대기 ({attempt}/3)...")
+            time.sleep(wait)
+        except Exception as e:
+            if attempt < 3:
+                print(f"  [추출] API 오류 - 재시도 ({attempt}/3)... {e}")
+                time.sleep(3)
+            else:
+                print(f"  [추출] 실패, 단일 프롬프트로 폴백: {e}")
+                return _summarize_single(case, title, content, "대법원")
+
+    if not extracted:
+        return _summarize_single(case, title, content, "대법원")
+
+    # 2단계: 섹션 생성
+    summarize_message = f"""다음은 대법원 판례 추출 내용입니다. 이를 바탕으로 4섹션 요약을 작성하세요.
+
+제목: {title}
+
+추출 내용:
+{extracted}"""
+
+    return _call_api(case, title, COURT_SUMMARIZE_SYSTEM, summarize_message)
+
+
+def _call_api(case: dict, title: str, system: str, user_message: str) -> dict:
+    """API 호출 공통 로직 (재시도 포함)"""
+    client = get_client()
 
     for attempt in range(1, 4):
         try:
             response = client.messages.create(
                 model="claude-sonnet-4-6",
                 max_tokens=2000,
-                system=SYSTEM_PROMPT,
+                system=system,
                 messages=[{"role": "user", "content": user_message}]
             )
-            summary_text = response.content[0].text.strip()
-            case["summary"] = summary_text
+            case["summary"] = response.content[0].text.strip()
             return case
         except anthropic.RateLimitError:
             wait = 10 * attempt
-            print(f"  [요약] API 한도 초과 - {wait}초 대기 후 재시도 ({attempt}/3)...")
+            print(f"  [요약] API 한도 초과 - {wait}초 대기 ({attempt}/3)...")
             time.sleep(wait)
         except Exception as e:
             if attempt < 3:
-                print(f"  [요약] API 오류 - 재시도 중 ({attempt}/3)... {e}")
+                print(f"  [요약] API 오류 - 재시도 ({attempt}/3)... {e}")
                 time.sleep(3)
             else:
                 print(f"  [요약] API 최종 실패: {e}")
@@ -93,26 +205,8 @@ def summarize_case(case: dict) -> dict:
     return case
 
 
-def _build_user_message(title: str, content: str, source: str, is_court: bool) -> str:
-    # 내용이 너무 길면 앞부분 우선 (Claude context 절약, 대법원은 더 많이 포함)
-    max_content_len = 8000 if is_court else 5000
-    if len(content) > max_content_len:
-        content = content[:max_content_len] + "\n\n[이하 원문 생략]"
-
-    accuracy_note = ""
-    if is_court:
-        accuracy_note = "\n⚠️ 대법원 판례입니다. '판시 사항' 섹션에서 법률 원문 표현을 최대한 유지해 주세요."
-
-    return f"""다음 {source} 사례를 4섹션으로 구조화해 주세요.{accuracy_note}
-
-제목: {title}
-
-원문 내용:
-{content}"""
-
-
 def _empty_summary(title: str) -> str:
-    return f"""1. 사건 요약
+    return """1. 사건 요약
 [원문 내용 수집 실패로 요약 불가]
 
 2. 사실 관계
