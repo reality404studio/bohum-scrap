@@ -108,6 +108,7 @@ def scrape_kca(year: int, quarter: int) -> list[dict]:
                 print(f"[소비자원] 날짜 범위 이후 건 제외: {detail.get('title','')[:40]}")
                 continue
             print(f"[소비자원] 수집: {detail.get('date','')} | {detail.get('title','')[:40]}")
+            detail.pop("_date_obj", None)
             cases.append(detail)
             time.sleep(0.3)
 

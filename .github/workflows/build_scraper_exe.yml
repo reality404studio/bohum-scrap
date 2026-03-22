@@ -1,0 +1,36 @@
+name: 판례수집기 .exe 빌드
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 패키지 설치
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: .exe 빌드
+        run: >
+          pyinstaller --onefile --windowed
+          --name "판례수집기"
+          --hidden-import scrapers.fss
+          --hidden-import scrapers.kca
+          --hidden-import scrapers.court
+          gui_scraper.py
+
+      - name: Artifact 업로드
+        uses: actions/upload-artifact@v4
+        with:
+          name: 판례수집기-windows
+          path: dist/판례수집기.exe
+          retention-days: 90

@@ -138,7 +138,7 @@ def scrape_court(year: int, quarter: int) -> list[dict]:
             title_parts = [p for p in [court, case_no, case_alias] if p]
             title = " ".join(title_parts) if title_parts else f"판례 {jis_srno}"
 
-            url = f"{BASE_URL}/pgp/index.on?m=PGP1011M02&jisCntntsSrno={jis_srno}"
+            url = f"{BASE_URL}/pgp/main.on?w2xPath=PGP1011M04&jisCntntsSrno={jis_srno}&c=900&srchwd=보험금"
 
             cases.append({
                 "title": title,

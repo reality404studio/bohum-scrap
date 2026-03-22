@@ -6,6 +6,7 @@
 import re
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse, parse_qs
 
 from docx import Document
 from docx.shared import Pt, RGBColor, Inches
@@ -247,7 +248,23 @@ def _build_html(
                 url = case.get("url", "")
                 title = case.get("title", "제목 없음")
                 date = case.get("date", "")
-                link_html = f'<a href="{url}" target="_blank" class="case-link">{title}</a>' if url else f'<span>{title}</span>'
+                if source == "소비자원" and url:
+                    qs = parse_qs(urlparse(url).query)
+                    seq = qs.get("seq", [""])[0]
+                    brd_id = qs.get("brdId", ["00000007"])[0]
+                    link_html = (
+                        f'<form method="POST" action="https://www.kca.go.kr/odr/cm/cm/boardsDtl.do" '
+                        f'target="_blank" style="display:inline;margin:0;">'
+                        f'<input type="hidden" name="brdId" value="{brd_id}">'
+                        f'<input type="hidden" name="seq" value="{seq}">'
+                        f'<input type="hidden" name="dataStts" value="Y">'
+                        f'<button type="submit" class="case-link post-btn">{title}</button>'
+                        f'</form>'
+                    )
+                elif url:
+                    link_html = f'<a href="{url}" target="_blank" class="case-link">{title}</a>'
+                else:
+                    link_html = f'<span>{title}</span>'
                 items_html += f"""
                 <div class="case-item">
                     <div class="case-title">{link_html}</div>
@@ -338,6 +355,15 @@ def _build_html(
             text-decoration: none;
         }}
         .case-link:hover {{ text-decoration: underline; }}
+        .post-btn {{
+            background: none;
+            border: none;
+            padding: 0;
+            cursor: pointer;
+            font-size: 15px;
+            font-family: inherit;
+            text-align: left;
+        }}
         .case-date {{ color: #888; font-size: 13px; }}
         .no-data {{ color: #888; padding: 20px; text-align: center; }}
         .total {{

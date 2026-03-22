@@ -4,17 +4,21 @@ Claude API를 사용하여 판례/조정례를 4섹션 구조로 변환
 """
 
 import anthropic
+import threading
 import time
 import re
 
 
 CLIENT = None
+_CLIENT_LOCK = threading.Lock()
 
 
 def get_client() -> anthropic.Anthropic:
     global CLIENT
     if CLIENT is None:
-        CLIENT = anthropic.Anthropic()
+        with _CLIENT_LOCK:
+            if CLIENT is None:
+                CLIENT = anthropic.Anthropic()
     return CLIENT
 
 
@@ -64,7 +68,7 @@ def summarize_case(case: dict) -> dict:
     for attempt in range(1, 4):
         try:
             response = client.messages.create(
-                model="claude-opus-4-6",
+                model="claude-sonnet-4-6",
                 max_tokens=2000,
                 system=SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": user_message}]
