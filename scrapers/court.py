@@ -8,6 +8,7 @@
 
 import time
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 import requests
@@ -159,14 +160,29 @@ def scrape_court(year: int, quarter: int) -> list[dict]:
 
     print(f"[대법원] 목록 수집 완료: {len(cases)}건")
 
-    # 본문(전문) 수집
-    for i, case in enumerate(cases, 1):
-        print(f"[대법원] 원문 수집 중 ({i}/{len(cases)}): {case['title'][:45]}...")
-        case["content"] = _fetch_full_text(session, case["jis_srno"])
-        time.sleep(1)
+    # 본문(전문) 병렬 수집
+    completed = 0
+    total = len(cases)
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        future_to_case = {
+            executor.submit(_fetch_full_text_parallel, case["jis_srno"]): case
+            for case in cases
+        }
+        for future in as_completed(future_to_case):
+            case = future_to_case[future]
+            completed += 1
+            print(f"[대법원] 원문 수집 중 ({completed}/{total}): {case['title'][:45]}...")
+            case["content"] = future.result()
 
     print(f"[대법원] 수집 완료: {len(cases)}건")
     return cases
+
+
+def _fetch_full_text_parallel(jis_srno: str) -> str:
+    """병렬 실행용 — 독립 세션 생성"""
+    s = requests.Session()
+    s.headers.update(HEADERS)
+    return _fetch_full_text(s, jis_srno)
 
 
 def _fetch_full_text(session: requests.Session, jis_srno: str) -> str:
