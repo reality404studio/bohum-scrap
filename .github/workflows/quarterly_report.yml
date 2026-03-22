@@ -39,13 +39,12 @@ jobs:
         run: |
           echo "=== Python 패키지 설치 중 ==="
           pip install -r requirements.txt
-          echo "=== Playwright 브라우저 설치 중 ==="
-          playwright install chromium --with-deps
           echo "=== 설치 완료 ==="
 
       - name: 보고서 생성 실행
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          LAW_OC: ${{ secrets.LAW_OC }}
         run: |
           echo "=== 분기별 판례정리 시작 ==="
           echo "대상: ${{ inputs.year }}년 ${{ inputs.quarter }}분기"
