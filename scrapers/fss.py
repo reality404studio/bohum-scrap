@@ -175,16 +175,14 @@ def _parse_list_page(
 def _has_next_page(soup: BeautifulSoup, current_page: int) -> bool:
     """다음 페이지 링크 존재 여부"""
     next_page = current_page + 1
-    # 페이지네이션 링크에서 다음 페이지 번호 확인
-    paging = soup.select("div.paging a, div.pagination a, .paging a")
+    # 실제 FSS HTML: <div class="pagination-set"> > <ul class="pagination pagination-centered"> > <li><a data-pageindex="N" href="javascript:fnSearch(N)">
+    paging = soup.select(".pagination-set a, ul.pagination a")
     for a in paging:
+        data_pageindex = a.get("data-pageindex", "")
         href = a.get("href", "")
-        onclick = a.get("onclick", "")
-        text = a.get_text(strip=True)
         if (
-            str(next_page) in text
-            or f"pageIndex={next_page}" in href
-            or f"pageIndex={next_page}" in onclick
+            data_pageindex == str(next_page)
+            or f"fnSearch({next_page})" in href
         ):
             return True
     return False
