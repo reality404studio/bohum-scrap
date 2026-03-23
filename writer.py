@@ -154,8 +154,12 @@ def _add_case_entry(doc: Document, case: dict):
     url = case.get("url", "")
     summary_text = case.get("summary", "")
 
-    # 케이스 제목
-    case_heading = doc.add_heading(title, level=3)
+    # 섹션 파싱 (제목 포함)
+    sections = parse_summary_sections(summary_text) if summary_text else {}
+
+    # 케이스 제목 — AI가 생성한 제목이 있으면 우선 사용, 없으면 스크래핑 제목 사용
+    ai_title = sections.get("제목", "").strip()
+    case_heading = doc.add_heading(ai_title or title, level=3)
 
     # 날짜 + 원문 링크 (소제목처럼)
     meta = doc.add_paragraph()
@@ -170,7 +174,6 @@ def _add_case_entry(doc: Document, case: dict):
 
     # 4섹션 내용
     if summary_text:
-        sections = parse_summary_sections(summary_text)
         section_labels = [
             ("사건_요약", "사건 요약"),
             ("사실_관계", "사실 관계"),
